@@ -1,5 +1,5 @@
 
-variable "location" {}
-variable "env" {}
-variable "prefix" {}
+# variable "location" {}
+# variable "env" {}
+# variable "prefix" {}
 
