@@ -24,11 +24,24 @@ pipeline {
 
         stage('Terraform Plan') {
             steps {
-                sh 'terraform plan -out=tfplan'
+                script {
+                    if (env.BRANCH_NAME != 'main') {
+                        echo "Running Terraform plan for main"
+                        sh 'terraform plan -out=tfplan'
+                    } else {
+                        echo "Running terrafrom plan for feature branch: ${env.BRANCH_NAME}"
+                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"                    
+                        
+                    }
+                }
+               
             }
         }
 
         stage('Terraform Apply') {
+            when {
+                branch 'main'
+            }
 
             steps {
                 script {
