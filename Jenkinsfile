@@ -26,20 +26,22 @@ pipeline {
             steps {
                 script {
                     if (env.BRANCH_NAME != 'main') {
-                        echo "Running Terraform plan for main"
-                        sh 'terraform plan -out=tfplan'
+                        echo "Running Terraform plan for other branches"
+                        sh 'terraform plan -out=tfplan'                        
+
                     } else {
                         echo "Running terrafrom plan for feature branch: ${env.BRANCH_NAME}"
                         sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"                    
                         
                     }
                 }
-               
+               }
             }
-        }
+        
 
         stage('Terraform Apply') {
             when {
+                beforeInput true
                 branch 'main'
             }
 
@@ -49,7 +51,7 @@ pipeline {
                     input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
                     
                     //Run the apply command after the appproval
-                    sh 'terraform apply tfplan'
+                    sh 'terraform apply tfplan-main'
                 }
             }
         }
