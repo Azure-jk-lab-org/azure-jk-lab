@@ -31,7 +31,7 @@ pipeline {
         stage('Terraform Apply') {
 
             steps {
-                scripts {
+                script {
                     //Pause for approval before applying changes
                     input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
                     
