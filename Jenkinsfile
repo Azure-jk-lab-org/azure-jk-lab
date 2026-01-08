@@ -31,7 +31,13 @@ pipeline {
         stage('Terraform Apply') {
 
             steps {
-                sh 'terraform apply tfplan'
+                scripts {
+                    //Pause for approval before applying changes
+                    input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
+                    
+                    //Run the apply command after the appproval
+                    sh 'terraform apply tfplan'
+                }
             }
         }
     }
