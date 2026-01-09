@@ -6,16 +6,50 @@ pipeline {
         ARM_CLIENT_SECRET   = credentials('ARM_CLIENT_SECRET')
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
+        IS_MAIN_BRANCH      = 'false'
+        EFFECTIVE_BRANCH    = ''
     }
 
     stages {
+
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Detect Branch') {
+            steps {
+                script {
+                    def branch = env.BRANCH_NAME
+
+                    if (!branch || branch == 'null') {
+                        branch = sh(
+                            script: 'git symbolic-ref --short HEAD || echo DETACHED',
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    echo "Detected branch: ${branch}"
+
+                    env.EFFECTIVE_BRANCH = branch
+                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
+                }
+            }
+        }
 
         stage('Terraform Initialization') {
             steps {
                 sh 'terraform init'
             }
         }
-        stage('Terraform Format Check') {
+        stage('Terraform Format Correction') {
+            steps {
+                sh 'terraform fmt -recursive'
+            }
+        }
+
+        stage('Terraform Format Correction') {
             steps {
                 sh 'terraform fmt -check'
             }
@@ -30,13 +64,13 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (env.BRANCH_NAME != 'main') {
+                    if (env.IS_MAIN_BRANCH == 'true') {
                         echo "Running Terraform plan for main"
-                        sh 'terraform plan -out=tfplan'
+                        sh 'terraform plan -out=tfplan-main'
                     } else {
-                        echo "Running terrafrom plan for feature branch: ${env.BRANCH_NAME}"
-                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"                    
-                        
+                        echo "Running Terraform plan for ${env.EFFECTIVE_BRANCH}"
+                        sh 'terraform plan -out=tfplan-non-main'
+                        echo "Apply will be blocked"
                     }
                 }
                
@@ -49,13 +83,9 @@ pipeline {
             }
 
             steps {
-                script {
-                    //Pause for approval before applying changes
-                    input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
-                    
-                    //Run the apply command after the appproval
-                    sh 'terraform apply tfplan'
-                }
+                echo "Main branch confirmed — apply requires approval"
+                input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
+                sh 'terraform apply tfplan-main'
             }
         }
     }
@@ -63,6 +93,9 @@ pipeline {
     post {
         always {
             sh 'terraform version'
+        }
+        aborted {
+            echo 'Terraform apply was denied by user'
         }
         failure {
             echo 'Terraform pipeline failed!'
