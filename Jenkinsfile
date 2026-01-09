@@ -18,20 +18,35 @@ pipeline {
             }
         }
 
-        stage('Debug Branch') {
+        stage('Detect Branch') {
             steps {
                 script {
-                    echo "Jenkins BRANCH_NAME = ${env.BRANCH_NAME}"
-                    env.EFFECTIVE_BRANCH = env.BRANCH_NAME ?: sh(
-                        script: 'git rev-parse --abbrev-ref HEAD || echo DETACHED',
-                        returnStdout: true
-                    ).trim()
-                    env.IS_MAIN_BRANCH = (env.EFFECTIVE_BRANCH == 'main').toString()
-                    echo "Effective branch = ${env.EFFECTIVE_BRANCH}"
-                    echo "Is main branch? = ${env.IS_MAIN_BRANCH}"
+                    // First, try Jenkins BRANCH_NAME
+                    def branch = env.BRANCH_NAME
+
+                    // If null, empty, or string 'null', fallback to Git detection
+                    if (!branch || branch == 'null') {
+                        branch = sh(
+                            script: 'git rev-parse --abbrev-ref HEAD || echo DETACHED',
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    // If Git is still detached, default to 'main'
+                    if (branch == 'DETACHED') {
+                        branch = 'main'
+                    }
+
+                    echo "Detected branch: ${branch}"
+
+                    env.EFFECTIVE_BRANCH = branch
+                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
                 }
+
+                // Debug info
                 sh 'git log -1 --oneline'
                 sh 'git branch --show-current || echo "detached"'
+                echo "IS_MAIN_BRANCH = ${env.IS_MAIN_BRANCH}"
             }
         }
 
