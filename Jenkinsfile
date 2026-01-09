@@ -7,6 +7,7 @@ pipeline {
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
         IS_MAIN_BRANCH      = 'false'
+        EFFECTIVE_BRANCH    = ''
     }
 
     stages {
