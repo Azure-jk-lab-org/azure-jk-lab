@@ -6,11 +6,36 @@ pipeline {
         ARM_CLIENT_SECRET   = credentials('ARM_CLIENT_SECRET')
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
+        IS_MAIN_BRANCH      = 'false'
     }
 
     stages {
 
-        stage('Terraform Initialization') {
+        stage('Checkout SCM') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Detect Branch') {
+            steps {
+                script {
+                    def branch = env.BRANCH_NAME
+
+                    if (!branch) {
+                        branch = sh(
+                            script: 'git symbolic-ref --short HEAD || echo DETACHED',
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    echo "Detected branch: ${branch}"
+                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
+                }
+            }
+        }
+
+        stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
@@ -31,17 +56,11 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
-                        echo "Running Terraform plan for main branch"
+                    if (env.IS_MAIN_BRANCH == 'true') {
                         sh 'terraform plan -out=tfplan-main'
                     } else {
-                        echo "Running Terraform plan for branch: ${env.BRANCH_NAME}"
-                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"
-
-                        //Hard stop for non-main branches
-                        currentBuild.result = 'SUCCESS'
-                        echo "Non-main branch detected. Skipping apply stage."
-                        return
+                        sh 'terraform plan -out=tfplan-non-main'
+                        echo 'Apply is BLOCKED for non-main branches'
                     }
                 }
             }
@@ -49,21 +68,33 @@ pipeline {
 
         stage('Terraform Apply') {
             when {
-                branch 'main'                
+                expression { env.IS_MAIN_BRANCH == 'true' }
             }
             steps {
-                input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
-                sh 'terraform apply tfplan-main'
+                script {
+                    // 🔐 HARD SAFETY CHECK (cannot be bypassed)
+                    if (env.IS_MAIN_BRANCH != 'true') {
+                        error('SECURITY BLOCK: Terraform Apply attempted on non-main branch')
+                    }
+
+                    input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
+
+                    // ✅ Apply EXACT saved plan
+                    sh 'terraform apply tfplan-main'
+                }
             }
         }
     }
 
     post {
-        always {
-            sh 'terraform version'
+        aborted {
+            echo 'Terraform apply was aborted by user'
         }
         failure {
             echo 'Terraform pipeline failed!'
+        }
+        always {
+            sh 'terraform version'
         }
     }
 }
