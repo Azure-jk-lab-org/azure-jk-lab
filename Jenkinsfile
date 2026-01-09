@@ -68,7 +68,7 @@ pipeline {
 
         stage('Terraform Apply') {
             when {
-                branch 'main'
+                expression { env.IS_MAIN_BRANCH == 'true'
             }
 
             steps {
