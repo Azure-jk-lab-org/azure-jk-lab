@@ -16,12 +16,6 @@ pipeline {
             }
         }
 
-        stage('Terraform Format Correction') {
-            steps {
-                sh 'terraform fmt -recursive'
-            }
-        }
-
         stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
@@ -31,29 +25,32 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
-                        echo "Running Terraform plan for main branch"
-                        sh 'terraform plan -out=tfplan-main'
+                    if (env.BRANCH_NAME != 'main') {
+                        echo "Running Terraform plan for main"
+                        sh 'terraform plan -out=tfplan'
                     } else {
-                        echo "Running Terraform plan for branch: ${env.BRANCH_NAME}"
-                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"
-
-                        //Hard stop for non-main branches
-                        currentBuild.result = 'SUCCESS'
-                        echo "Non-main branch detected. Skipping apply stage."
-                        return
+                        echo "Running terrafrom plan for feature branch: ${env.BRANCH_NAME}"
+                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"                    
+                        
                     }
                 }
+               
             }
         }
 
         stage('Terraform Apply') {
             when {
-                branch 'main'                
+                branch 'main'
             }
+
             steps {
-                input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
-                sh 'terraform apply tfplan-main'
+                script {
+                    //Pause for approval before applying changes
+                    input message: 'Do you want to Apply Terraform changes?', ok: 'Apply'
+                    
+                    //Run the apply command after the appproval
+                    sh 'terraform apply tfplan'
+                }
             }
         }
     }
