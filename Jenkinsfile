@@ -8,14 +8,7 @@ pipeline {
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
         EFFECTIVE_BRANCH    = ''
     }
-
     stages {
-
-        stage('Checkout SCM') {
-            steps {
-                checkout scm
-            }
-        }
 
         stage('Detect Branch') {
             steps {
@@ -60,7 +53,7 @@ pipeline {
                 sh 'git log -1 --oneline'
                 sh 'git branch --show-current || echo "detached"'
             }
-        }
+        }    
 
         stage('Terraform Initialization') {
             steps {
@@ -113,3 +106,4 @@ pipeline {
         }
     }
 }
+
