@@ -16,6 +16,12 @@ pipeline {
             }
         }
 
+        stage('Terraform Format Correction') {
+            steps {
+                sh 'terraform fmt -recursive'
+            }
+        }
+
         stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
@@ -31,6 +37,11 @@ pipeline {
                     } else {
                         echo "Running Terraform plan for branch: ${env.BRANCH_NAME}"
                         sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"
+
+                        //Hard stop for non-main branches
+                        currentBuild.result = 'SUCCESS'
+                        echo "Non-main branch detected. Skipping apply stage."
+                        return
                     }
                 }
             }
