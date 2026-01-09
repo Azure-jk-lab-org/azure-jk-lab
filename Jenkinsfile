@@ -9,14 +9,6 @@ pipeline {
         EFFECTIVE_BRANCH    = ''
     }
 
-    stages {
-
-        stage('Checkout SCM') {
-            steps {
-                checkout scm
-            }
-        }
-
         stage('Detect Branch') {
             steps {
                 script {
@@ -61,6 +53,7 @@ pipeline {
                 sh 'git branch --show-current || echo "detached"'
             }
         }
+    stages {
 
         stage('Terraform Initialization') {
             steps {
@@ -113,3 +106,4 @@ pipeline {
         }
     }
 }
+
