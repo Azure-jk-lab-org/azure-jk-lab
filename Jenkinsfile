@@ -20,6 +20,7 @@ pipeline {
                 sh 'terraform fmt -check'
             }
         }
+        
 
         stage('Terraform Validate') {
             steps {
