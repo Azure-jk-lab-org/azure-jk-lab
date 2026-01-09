@@ -2,22 +2,18 @@ pipeline {
     agent { label 'slave1' }
 
     environment {
-        // Use credentials for security best practices
         ARM_CLIENT_ID       = credentials('ARM_CLIENT_ID')
         ARM_CLIENT_SECRET   = credentials('ARM_CLIENT_SECRET')
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
+        // Normalizes branch name across different job types
+        CURRENT_BRANCH = "${env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown'}"
     }
 
     stages {
-        stage('Terraform Init') {
+        stage('Terraform Init & Validate') {
             steps {
                 sh 'terraform init'
-            }
-        }
-
-        stage('Terraform Validate') {
-            steps {
                 sh 'terraform validate'
             }
         }
@@ -25,48 +21,33 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    // Logic: Always plan, but name the plan based on the branch
-                    def planName = (env.BRANCH_NAME == 'main') ? "tfplan-main" : "tfplan-${env.BRANCH_NAME}"
-                    sh "terraform plan -out=${planName}"
+                    // Clean branch name (removes 'origin/' prefix if present)
+                    def branch = env.CURRENT_BRANCH.replace('origin/', '')
+                    echo "Planning for branch: ${branch}"
                     
-                    // Stashing the plan file so it is available in the next stage even on different agents
-                    stash name: 'terraform-plan', includes: planName
+                    sh "terraform plan -out=tfplan-${branch}"
+                    stash name: 'tfplan', includes: "tfplan-${branch}"
                 }
             }
         }
 
         stage('Terraform Apply') {
-            // CONDITION: Run ONLY if the branch is main and NOT a Pull Request
             when {
-                allOf {
-                    branch 'main'
-                    not { changeRequest() } 
+                // Ensure this only runs on the main branch
+                expression { 
+                    def branch = env.CURRENT_BRANCH.replace('origin/', '')
+                    return branch == 'main' || branch == 'master'
                 }
             }
             steps {
                 script {
-                    unstash 'terraform-plan'
-                    
-                    // Best Practice: Use timeout with manual approval to avoid blocking Jenkins
-                    timeout(time: 2, unit: 'HOURS') {
-                        input message: "Review the plan for MAIN. Proceed with Apply?", ok: "Apply"
+                    unstash 'tfplan'
+                    timeout(time: 1, unit: 'HOURS') {
+                        input message: "Deploy to Production?", ok: "Apply"
                     }
-                    
                     sh 'terraform apply -auto-approve tfplan-main'
                 }
             }
-        }
-    }
-
-    post {
-        always {
-            sh 'terraform version'
-        }
-        aborted {
-            echo 'Deployment aborted manually or due to timeout.'
-        }
-        failure {
-            echo 'Terraform pipeline failed. Review logs for errors.'
         }
     }
 }
