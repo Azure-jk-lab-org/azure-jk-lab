@@ -21,7 +21,7 @@ pipeline {
         stage('Detect Branch') {
             steps {
                 script {
-                    // Try Jenkins BRANCH_NAME first
+                    // Try Jenkins-provided branch first
                     def branch = env.BRANCH_NAME
 
                     // Fallback if null, empty, or 'null'
@@ -35,14 +35,19 @@ pipeline {
                         ).trim()
                     }
 
-                    // If still detached or HEAD, try to find branch from origin
+                    // If still detached or HEAD, try to find main branch on origin
                     if (!branch || branch == 'HEAD' || branch == 'DETACHED') {
                         branch = sh(
                             script: """
-                                git for-each-ref --format="%(refname:short)" refs/remotes/origin/ | grep main || echo main
+                                git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | grep main || echo main
                             """,
                             returnStdout: true
                         ).trim()
+                    }
+
+                    // Strip 'origin/' prefix if present
+                    if (branch.startsWith('origin/')) {
+                        branch = branch.replace('origin/', '')
                     }
 
                     echo "Detected branch: ${branch}"
