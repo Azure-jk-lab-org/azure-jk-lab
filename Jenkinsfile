@@ -18,23 +18,20 @@ pipeline {
             }
         }
 
-        stage('Detect Branch') {
+        stage('Debug Branch') {
             steps {
                 script {
-                    def branch = env.BRANCH_NAME
-
-                    if (!branch || branch == 'null') {
-                        branch = sh(
-                            script: 'git symbolic-ref --short HEAD || echo DETACHED',
-                            returnStdout: true
-                        ).trim()
-                    }
-
-                    echo "Detected branch: ${branch}"
-
-                    env.EFFECTIVE_BRANCH = branch
-                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
+                    echo "Jenkins BRANCH_NAME = ${env.BRANCH_NAME}"
+                    env.EFFECTIVE_BRANCH = env.BRANCH_NAME ?: sh(
+                        script: 'git rev-parse --abbrev-ref HEAD || echo DETACHED',
+                        returnStdout: true
+                    ).trim()
+                    env.IS_MAIN_BRANCH = (env.EFFECTIVE_BRANCH == 'main').toString()
+                    echo "Effective branch = ${env.EFFECTIVE_BRANCH}"
+                    echo "Is main branch? = ${env.IS_MAIN_BRANCH}"
                 }
+                sh 'git log -1 --oneline'
+                sh 'git branch --show-current || echo "detached"'
             }
         }
 
@@ -44,7 +41,7 @@ pipeline {
             }
         }
 
-        stage('Terraform Validate') {
+        stage('Terraform Validation') {
             steps {
                 sh 'terraform validate'
             }
@@ -54,15 +51,14 @@ pipeline {
             steps {
                 script {
                     if (env.IS_MAIN_BRANCH == 'true') {
-                        echo "Running Terraform plan for main"
+                        echo "Running Terraform plan for main branch"
                         sh 'terraform plan -out=tfplan-main'
                     } else {
-                        echo "Running Terraform plan for ${env.EFFECTIVE_BRANCH}"
-                        sh 'terraform plan -out=tfplan-non-main'
-                        echo "Apply will be blocked"
+                        echo "Running Terraform plan for branch: ${env.EFFECTIVE_BRANCH}"
+                        sh "terraform plan -out=tfplan-${env.EFFECTIVE_BRANCH}"
+                        echo "Terraform apply will be blocked for non-main branches"
                     }
                 }
-               
             }
         }
 
@@ -70,9 +66,8 @@ pipeline {
             when {
                 expression { env.IS_MAIN_BRANCH == 'true' }
             }
-
             steps {
-                echo "Main branch confirmed — apply requires approval"
+                echo "Main branch confirmed — apply requires manual approval"
                 input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
                 sh 'terraform apply tfplan-main'
             }
@@ -84,7 +79,7 @@ pipeline {
             sh 'terraform version'
         }
         aborted {
-            echo 'Terraform apply was denied by user'
+            echo 'Terraform apply was aborted by user'
         }
         failure {
             echo 'Terraform pipeline failed!'
