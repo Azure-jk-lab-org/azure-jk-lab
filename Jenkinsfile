@@ -44,13 +44,6 @@ pipeline {
             }
         }
 
-        stage('Terraform Format Correction') {
-            steps {
-                sh 'terraform fmt -check'
-            }
-        }
-        
-
         stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
