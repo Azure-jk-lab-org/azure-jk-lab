@@ -51,7 +51,7 @@ pipeline {
 
         stage('Terraform Format Correction') {
             steps {
-                sh 'terraform fmt -recursive'
+                sh 'terraform fmt -check'
             }
         }
 
@@ -73,13 +73,15 @@ pipeline {
                         echo "Apply will be blocked"
                     }
                 }
+               
             }
         }
 
         stage('Terraform Apply') {
             when {
-                expression { env.IS_MAIN_BRANCH == 'true' }
+                branch 'main'
             }
+
             steps {
                 echo "Main branch confirmed — apply requires approval"
                 input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
