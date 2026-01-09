@@ -2,66 +2,21 @@ pipeline {
     agent { label 'slave1' }
 
     environment {
+        // Use credentials for security best practices
         ARM_CLIENT_ID       = credentials('ARM_CLIENT_ID')
         ARM_CLIENT_SECRET   = credentials('ARM_CLIENT_SECRET')
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
-        EFFECTIVE_BRANCH    = ''
     }
+
     stages {
-
-        stage('Detect Branch') {
-            steps {
-                script {
-                    // Try Jenkins-provided branch first
-                    def branch = env.BRANCH_NAME
-
-                    // Fallback if null, empty, or 'null'
-                    if (!branch || branch == 'null') {
-                        branch = sh(
-                            script: """
-                                git symbolic-ref --short HEAD 2>/dev/null || \
-                                git rev-parse --abbrev-ref HEAD 2>/dev/null
-                            """,
-                            returnStdout: true
-                        ).trim()
-                    }
-
-                    // If still detached or HEAD, try to find main branch on origin
-                    if (!branch || branch == 'HEAD' || branch == 'DETACHED') {
-                        branch = sh(
-                            script: """
-                                git for-each-ref --format='%(refname:short)' refs/remotes/origin/ | grep main || echo main
-                            """,
-                            returnStdout: true
-                        ).trim()
-                    }
-
-                    // Strip 'origin/' prefix if present
-                    if (branch.startsWith('origin/')) {
-                        branch = branch.replace('origin/', '')
-                    }
-
-                    echo "Detected branch: ${branch}"
-
-                    env.EFFECTIVE_BRANCH = branch
-                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
-                    echo "IS_MAIN_BRANCH = ${env.IS_MAIN_BRANCH}"
-                }
-
-                // Debug info
-                sh 'git log -1 --oneline'
-                sh 'git branch --show-current || echo "detached"'
-            }
-        }    
-
-        stage('Terraform Initialization') {
+        stage('Terraform Init') {
             steps {
                 sh 'terraform init'
             }
         }
 
-        stage('Terraform Validation') {
+        stage('Terraform Validate') {
             steps {
                 sh 'terraform validate'
             }
@@ -70,26 +25,35 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (env.IS_MAIN_BRANCH == 'true') {
-                        echo "Running Terraform plan for main branch"
-                        sh 'terraform plan -out=tfplan-main'
-                    } else {
-                        echo "Running Terraform plan for branch: ${env.EFFECTIVE_BRANCH}"
-                        sh "terraform plan -out=tfplan-${env.EFFECTIVE_BRANCH}"
-                        echo "Terraform apply will be blocked for non-main branches"
-                    }
+                    // Logic: Always plan, but name the plan based on the branch
+                    def planName = (env.BRANCH_NAME == 'main') ? "tfplan-main" : "tfplan-${env.BRANCH_NAME}"
+                    sh "terraform plan -out=${planName}"
+                    
+                    // Stashing the plan file so it is available in the next stage even on different agents
+                    stash name: 'terraform-plan', includes: planName
                 }
             }
         }
 
         stage('Terraform Apply') {
+            // CONDITION: Run ONLY if the branch is main and NOT a Pull Request
             when {
-                expression { env.IS_MAIN_BRANCH == 'true' }
+                allOf {
+                    branch 'main'
+                    not { changeRequest() } 
+                }
             }
             steps {
-                echo "Main branch confirmed — apply requires manual approval"
-                input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
-                sh 'terraform apply tfplan-main'
+                script {
+                    unstash 'terraform-plan'
+                    
+                    // Best Practice: Use timeout with manual approval to avoid blocking Jenkins
+                    timeout(time: 2, unit: 'HOURS') {
+                        input message: "Review the plan for MAIN. Proceed with Apply?", ok: "Apply"
+                    }
+                    
+                    sh 'terraform apply -auto-approve tfplan-main'
+                }
             }
         }
     }
@@ -99,11 +63,10 @@ pipeline {
             sh 'terraform version'
         }
         aborted {
-            echo 'Terraform apply was aborted by user'
+            echo 'Deployment aborted manually or due to timeout.'
         }
         failure {
-            echo 'Terraform pipeline failed!'
+            echo 'Terraform pipeline failed. Review logs for errors.'
         }
     }
 }
-
