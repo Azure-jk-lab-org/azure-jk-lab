@@ -6,9 +6,30 @@ pipeline {
         ARM_CLIENT_SECRET   = credentials('ARM_CLIENT_SECRET')
         ARM_TENANT_ID       = credentials('ARM_TENANT_ID')
         ARM_SUBSCRIPTION_ID = credentials('ARM_SUBSCRIPTION_ID')
+        IS_MAIN_BRANCH      = 'false'
     }
 
     stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Detect Branch') {
+            steps {
+                script {
+                    def branch = sh(
+                        script: 'git rev-parse --abbrev-ref HEAD',
+                        returnStdout: true
+                    ).trim()
+
+                    env.IS_MAIN_BRANCH = (branch == 'main').toString()
+                    echo "Detected branch: ${branch}"
+                }
+            }
+        }
 
         stage('Terraform Initialization') {
             steps {
@@ -31,17 +52,13 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
+                    if (env.IS_MAIN_BRANCH == 'true') {
                         echo "Running Terraform plan for main branch"
                         sh 'terraform plan -out=tfplan-main'
                     } else {
-                        echo "Running Terraform plan for branch: ${env.BRANCH_NAME}"
-                        sh "terraform plan -out=tfplan-${env.BRANCH_NAME}"
-
-                        //Hard stop for non-main branches
-                        currentBuild.result = 'SUCCESS'
-                        echo "Non-main branch detected. Skipping apply stage."
-                        return
+                        echo "Running Terraform plan for non-main branch"
+                        sh 'terraform plan -out=tfplan-non-main'
+                        echo "Apply will be skipped"
                     }
                 }
             }
@@ -49,7 +66,7 @@ pipeline {
 
         stage('Terraform Apply') {
             when {
-                branch 'main'                
+                expression { env.IS_MAIN_BRANCH == 'true' }
             }
             steps {
                 input message: 'Do you want to apply Terraform changes?', ok: 'Apply'
