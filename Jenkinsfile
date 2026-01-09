@@ -27,14 +27,15 @@ pipeline {
                     // If null, empty, or string 'null', fallback to Git detection
                     if (!branch || branch == 'null') {
                         branch = sh(
-                            script: 'git rev-parse --abbrev-ref HEAD || echo DETACHED',
+
+                            script: """
+                            git symbolic-ref --short HEAD 2>/dev/null || \
+                            git rev-parse --abbrev-ref HEAD 2>/dev/null || \
+                            echo main
+                            """,
+
                             returnStdout: true
                         ).trim()
-                    }
-
-                    // If Git is still detached, default to 'main'
-                    if (branch == 'DETACHED') {
-                        branch = 'main'
                     }
 
                     echo "Detected branch: ${branch}"
