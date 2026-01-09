@@ -43,6 +43,11 @@ pipeline {
                 sh 'terraform init'
             }
         }
+        stage('Terraform Format Correction') {
+            steps {
+                sh 'terraform fmt -recursive'
+            }
+        }
 
         stage('Terraform Format Correction') {
             steps {
