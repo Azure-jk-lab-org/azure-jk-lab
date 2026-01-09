@@ -21,19 +21,26 @@ pipeline {
         stage('Detect Branch') {
             steps {
                 script {
-                    // First, try Jenkins BRANCH_NAME
+                    // Try Jenkins BRANCH_NAME first
                     def branch = env.BRANCH_NAME
 
-                    // If null, empty, or string 'null', fallback to Git detection
+                    // Fallback if null, empty, or 'null'
                     if (!branch || branch == 'null') {
                         branch = sh(
-
                             script: """
-                            git symbolic-ref --short HEAD 2>/dev/null || \
-                            git rev-parse --abbrev-ref HEAD 2>/dev/null || \
-                            echo main
+                                git symbolic-ref --short HEAD 2>/dev/null || \
+                                git rev-parse --abbrev-ref HEAD 2>/dev/null
                             """,
+                            returnStdout: true
+                        ).trim()
+                    }
 
+                    // If still detached or HEAD, try to find branch from origin
+                    if (!branch || branch == 'HEAD' || branch == 'DETACHED') {
+                        branch = sh(
+                            script: """
+                                git for-each-ref --format="%(refname:short)" refs/remotes/origin/ | grep main || echo main
+                            """,
                             returnStdout: true
                         ).trim()
                     }
@@ -42,12 +49,12 @@ pipeline {
 
                     env.EFFECTIVE_BRANCH = branch
                     env.IS_MAIN_BRANCH = (branch == 'main').toString()
+                    echo "IS_MAIN_BRANCH = ${env.IS_MAIN_BRANCH}"
                 }
 
                 // Debug info
                 sh 'git log -1 --oneline'
                 sh 'git branch --show-current || echo "detached"'
-                echo "IS_MAIN_BRANCH = ${env.IS_MAIN_BRANCH}"
             }
         }
 
